@@ -35,7 +35,7 @@ jobs:
         run: |
           NDK_COMPILER=$PWD/android-ndk-r26b/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android31-clang
           mkdir build && cd build
-          cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=${NDK_COMPILER} -DANDROID=1 -DARM_DYNAREC=1 -DBAD_SIGNAL=1 -DSD680=1
+          cmake .. -DCMAKE_BUILD_TYPE=Release -DSD680=1 -DCMAKE_C_COMPILER=${NDK_COMPILER} -DANDROID=1 -DARM_DYNAREC=1 -DBAD_SIGNAL=1
           make -j$(nproc)
 
       - name: Package Box64 WCP
