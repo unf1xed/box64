@@ -12,6 +12,7 @@
 
 #include "os.h"
 #include "env.h"
+#include "custommem.h"
 #include "khash.h"
 #include "debug.h"
 #include "fileutils.h"
@@ -294,7 +295,7 @@ static void pushNewEntry(const char* name, box64env_t* env, int gen)
     k = kh_get(box64env_entry, khp, name);
     if (k == kh_end(khp)) {
         int ret;
-        k = kh_put(box64env_entry, khp, strdup(name), &ret);
+        k = kh_put(box64env_entry, khp, box_strdup(name), &ret);
     } else {
         freeEnv(&kh_value(khp, k));
     }
@@ -803,7 +804,7 @@ done:
 #define HEADER_SIGN "DynaCache"
 #define SET_VERSION(MAJ, MIN, REV) (((MAJ)<<24)|((MIN)<<16)|(REV))
 #ifdef ARM64
-#define ARCH_VERSION SET_VERSION(0, 0, 4)
+#define ARCH_VERSION SET_VERSION(0, 0, 5)
 #elif defined(RV64)
 #define ARCH_VERSION SET_VERSION(0, 0, 3)
 #elif defined(LA64)
@@ -811,7 +812,7 @@ done:
 #else
 #error meh!
 #endif
-#define DYNAREC_VERSION SET_VERSION(0, 0, 3)
+#define DYNAREC_VERSION SET_VERSION(0, 0, 4)
 
 typedef struct DynaCacheHeader_s {
     char sign[10];  //"DynaCache\0"

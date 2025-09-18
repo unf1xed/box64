@@ -32,7 +32,7 @@
 int RunTest(x64test_t *test)
 #else
 int running32bits = 0;
-int Run(x64emu_t *emu, int step)
+int Run(x64emu_t *emu, int step, int need_tf)
 #endif
 {
     uint8_t opcode;
@@ -68,6 +68,15 @@ int Run(x64emu_t *emu, int step)
     test->memsize = 0;
 #else
     CheckExec(emu, R_RIP);
+#ifndef TEST_INTERPRETER
+        // check the TRACE flag before going to next
+        if(ACCESS_FLAG(F_TF) && need_tf) {
+            need_tf = 0;
+            CLEAR_FLAG(F_TF);
+            EmitSignal(emu, X64_SIGTRAP, (void*)addr, 1);
+            if(emu->quit) goto fini;
+        }
+#endif
 x64emurun:
     while(1) 
 #endif
@@ -362,7 +371,7 @@ x64emurun:
             if(rex.is32bits) {
                 R_AX = aas16(emu, R_AX);
             } else {
-                EmitSignal(emu, X64_SIGILL, (void*)R_RIP, 0);
+                unimp = 1;
                 goto fini;
             }
             break;
@@ -855,15 +864,25 @@ x64emurun:
             R_AH = (uint8_t)emu->eflags.x64;
             break;
         case 0xA0:                      /* MOV AL,Ob */
-            if(rex.is32bits)
+            if(rex.is32bits && rex.is67)
+                R_AL = *(uint8_t*)(uintptr_t)(ptr_t)(rex.offset+F16S);
+            else if(rex.is32bits || rex.is67)
                 R_AL = *(uint8_t*)(uintptr_t)(ptr_t)(F32+rex.offset);
             else
                 R_AL = *(uint8_t*)(F64+rex.offset);
             break;
         case 0xA1:                      /* MOV EAX,Od */
-            if(rex.is32bits)
-                R_EAX = *(int32_t*)(uintptr_t)(ptr_t)(F32+rex.offset);
-            else {
+            if(rex.is32bits && rex.is67)
+                R_EAX = *(uint32_t*)(uintptr_t)(ptr_t)(rex.offset+F16S);
+            else if(rex.is32bits || rex.is67) {
+                if(rex.w)
+                    R_RAX = *(int64_t*)(uintptr_t)(ptr_t)(F32+rex.offset);
+                else {
+                    R_EAX = *(int32_t*)(uintptr_t)(ptr_t)(F32+rex.offset);
+                    if(!rex.is32bits)
+                        R_RAX = R_EAX;
+                }
+            } else {
                 if(rex.w)
                     R_RAX = *(uint64_t*)(F64+rex.offset);
                 else
@@ -871,15 +890,22 @@ x64emurun:
             }
             break;
         case 0xA2:                      /* MOV Ob,AL */
-            if(rex.is32bits)
+            if(rex.is32bits && rex.is67)
+                *(uint8_t*)(uintptr_t)(ptr_t)(rex.offset+F16S) = R_AL;
+            else if(rex.is32bits || rex.is67)
                 *(uint8_t*)(uintptr_t)(ptr_t)(F32+rex.offset) = R_AL;
             else
                 *(uint8_t*)(F64+rex.offset) = R_AL;
             break;
         case 0xA3:                      /* MOV Od,EAX */
-            if(rex.is32bits)
-                *(uint32_t*)(uintptr_t)(ptr_t)(F32+rex.offset) = R_EAX;
-            else {
+            if(rex.is32bits && rex.is67)
+                *(uint32_t*)(uintptr_t)(ptr_t)(rex.offset+F16S) = R_EAX;
+            else if(rex.is32bits || rex.is67) {
+                if(rex.w)
+                    *(uint64_t*)(uintptr_t)(ptr_t)(F32+rex.offset) = R_RAX;
+                else
+                    *(uint32_t*)(uintptr_t)(ptr_t)(F32+rex.offset) = R_EAX;
+            } else {
                 if(rex.w)
                     *(uint64_t*)(F64+rex.offset) = R_RAX;
                 else
@@ -1787,6 +1813,7 @@ x64emurun:
                     addr += tmp8s;
             } else if(rex.is32bits || rex.is67) {
                 --R_ECX; // don't update flags
+                if(rex.is67) emu->regs[_CX].dword[1] = 0;
                 if(R_ECX && !ACCESS_FLAG(F_ZF))
                     addr += tmp8s;
             } else {
@@ -1805,6 +1832,7 @@ x64emurun:
                     addr += tmp8s;
             } else if(rex.is32bits || rex.is67) {
                 --R_ECX; // don't update flags
+                if(rex.is67) emu->regs[_CX].dword[1] = 0;
                 if(R_ECX && ACCESS_FLAG(F_ZF))
                     addr += tmp8s;
             } else {
@@ -1822,6 +1850,7 @@ x64emurun:
                     addr += tmp8s;
             } else if(rex.is32bits || rex.is67) {
                 --R_ECX; // don't update flags
+                if(rex.is67) emu->regs[_CX].dword[1] = 0;
                 if(R_ECX)
                     addr += tmp8s;
             } else {
@@ -2252,6 +2281,7 @@ x64emurun:
             } else {
                 tf_next = 0;
                 R_RIP = addr;
+                CLEAR_FLAG(F_TF);
                 EmitSignal(emu, X64_SIGTRAP, (void*)addr, 1);
                 if(emu->quit) goto fini;
             }
